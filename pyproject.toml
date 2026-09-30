@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "engine-proof"
+version = "0.1.0"
+description = "Trust nothing, prove it: verify that AI agent changes to Godot and Unreal projects really reached disk."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "beweiskette" }]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["godot", "unreal", "ai-agents", "verification", "claude-code", "codex"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Testing",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+engine-proof = "engine_proof.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+engine_proof = ["godot_check.gd"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
