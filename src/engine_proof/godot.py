@@ -37,6 +37,16 @@ def looks_like_backup(rel: str) -> bool:
 # --------------------------------------------------------------------------- executable
 
 
+_ARCHIVE_SUFFIXES = {".zip", ".7z", ".tar", ".gz", ".xz", ".bz2", ".dmg", ".pck"}
+
+
+def _looks_like_binary(c: Path) -> bool:
+    # On Windows os.access(X_OK) is true for every existing file, so only .exe counts.
+    if os.name == "nt":
+        return c.suffix.lower() == ".exe"
+    return c.suffix.lower() not in _ARCHIVE_SUFFIXES and os.access(c, os.X_OK)
+
+
 def find_godot(explicit: str | None = None) -> str | None:
     """Resolve the Godot executable from --godot, then the GODOT environment variable.
 
@@ -49,7 +59,7 @@ def find_godot(explicit: str | None = None) -> str | None:
     if p.is_dir():
         bins = [c for c in sorted(p.iterdir())
                 if c.is_file() and c.name.lower().startswith("godot")
-                and (c.suffix.lower() == ".exe" or os.access(c, os.X_OK))]
+                and _looks_like_binary(c)]
         # Prefer the real binary over the Windows console wrapper.
         bins.sort(key=lambda c: ("console" in c.name.lower(), c.name))
         return str(bins[0]) if bins else None

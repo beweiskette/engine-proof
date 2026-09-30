@@ -162,3 +162,21 @@ def test_looks_like_backup():
     assert godot.looks_like_backup("Sicherung 2026/player.gd")
     assert not godot.looks_like_backup("scripts/player.gd")
     assert not godot.looks_like_backup("salt/altitude/default.gd")
+
+
+def test_find_godot_in_folder_ignores_archives(tmp_path, monkeypatch):
+    # A downloaded archive next to the binary must never be picked as the executable.
+    monkeypatch.delenv("GODOT", raising=False)
+    exe_name = "Godot_v4.test_win64.exe" if os.name == "nt" else "Godot_v4.test_linux.x86_64"
+    exe = tmp_path / exe_name
+    exe.write_bytes(b"")
+    exe.chmod(0o755)
+    (tmp_path / (exe_name + ".zip")).write_bytes(b"PK")
+    (tmp_path / "Godot_aaa.zip").write_bytes(b"PK")
+    assert godot.find_godot(str(tmp_path)) == str(exe)
+
+
+def test_find_godot_folder_with_only_archive_returns_none(tmp_path, monkeypatch):
+    monkeypatch.delenv("GODOT", raising=False)
+    (tmp_path / "Godot_v4.test_win64.exe.zip").write_bytes(b"PK")
+    assert godot.find_godot(str(tmp_path)) is None
