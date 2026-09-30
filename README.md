@@ -251,6 +251,19 @@ A one-off run: `codex exec "Rename the door Blueprint variable, then prove it wi
 
 Add `.engine-proof/` to `.gitignore` if snapshots are kept inside the project.
 
+## Security
+
+engine-proof quotes lines from Unreal editor logs, Godot output and project files as `evidence`. Those lines can carry secrets: API keys in URLs, tokens on command lines, passwords in connection strings, user names in paths. In hook mode the report goes straight to the agent. Before anything is printed, engine-proof therefore:
+
+- redacts secret-like values in every message, evidence string and file field, in text and JSON output alike: `Authorization` headers and `Bearer` tokens, credentials in URLs (`https://user:...@host`), values of keys such as `password`, `token`, `secret`, `api_key`, `access_key`, `credential`, `session_id` (as `key=value`, `key: value`, JSON or command line flag), query parameters `key`, `sig`, `code`, `auth`, common token formats (`sk-`, `ghp_`, `github_pat_`, `glpat-`, `AKIA`, `AIza`, `xox?-`, `hf_`, `npm_`, Stripe keys, JWTs), PEM private key blocks, and the user name in home directory paths (replaced by `<user>`). Unreal log lines are redacted before they are cut to length, so a cut cannot leave half a secret behind;
+- drops blocks of `NAME=value` lines (three or more, as printed by `env`, `set` or `export -p`) from evidence and puts `[N environment variable line(s) removed]` in their place. engine-proof itself never prints environment variables;
+- caps each message at 500 characters and each evidence string at 40 lines and 2000 characters;
+- caps the hook output (stderr or `additionalContext`) at 8000 characters. Errors come first, so a cut drops warnings before errors. Run `engine-proof verify` or `engine-proof unreal` for the full report.
+
+`unreal_probe.py` applies the same rules to the error texts it prints inside the editor.
+
+Redaction is pattern based. It catches common formats, not every secret: a password printed without a telltale key name, or a token in an unknown format, passes through. The `project` field of the report keeps the path you passed in. Do not rely on engine-proof as the only barrier when logs may hold production credentials.
+
 ## Limitations
 
 - `unreal_probe.py` has not been run in an Unreal editor during development; no editor was available. Its pure parts (path mapping, status mapping, problem assessment, JSON extraction from logs, argument parsing) are unit-tested. The editor calls (`EditorAssetLibrary`, `EditorLoadingAndSavingUtils.get_dirty_content_packages`, `load_blueprint_class`) differ between engine versions and are wrapped in `try`. Blueprint `status` is not exposed to Python in every engine version; the probe then reports `UNKNOWN` and relies on the generated-class check. Package paths outside `/Game/` (plugin content) are not mapped to files.
@@ -261,6 +274,7 @@ Add `.engine-proof/` to `.gitignore` if snapshots are kept inside the project.
 - Read-only detection uses the file mode bits. A save that fails for another reason (a file locked by another process, an antivirus scanner) is only visible through the log or the probe.
 - Mojibake detection looks for UTF-8 read as cp1252 or latin-1. Other encoding mix-ups are not detected.
 - The load check executes script loading code in the engine. `@tool` scripts and static initializers can run.
+- Secret redaction is pattern based (see [Security](#security)); secrets in unknown formats are not recognized.
 
 ## Development
 

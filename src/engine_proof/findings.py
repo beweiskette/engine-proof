@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Iterable
 
 from . import __version__
+from .redact import MAX_LINE_CHARS, clip, redact, safe_evidence, safe_message
 
 SEVERITIES = ("error", "warning", "info")
 _RANK = {"error": 0, "warning": 1, "info": 2}
@@ -25,8 +26,14 @@ class Finding:
         if self.severity not in SEVERITIES:
             raise ValueError(f"unknown severity: {self.severity}")
 
+    def sanitized(self) -> "Finding":
+        """Copy with secrets redacted and message/evidence capped; used for all output."""
+        return Finding(self.id, self.severity, safe_message(self.message),
+                       file=redact(self.file), line=self.line,
+                       evidence=safe_evidence(self.evidence) if self.evidence else self.evidence)
+
     def to_dict(self) -> dict[str, Any]:
-        d = asdict(self)
+        d = asdict(self.sanitized())
         return {k: v for k, v in d.items() if v is not None}
 
 
@@ -100,6 +107,7 @@ class Verdict:
         for f in self.sorted_findings():
             if f.severity == "info" and not show_info:
                 continue
+            f = f.sanitized()
             where = f.file or "-"
             if f.line:
                 where += f":{f.line}"
@@ -107,7 +115,7 @@ class Verdict:
             lines.append(f"          {f.message}")
             if f.evidence:
                 for ev in f.evidence.splitlines()[:6]:
-                    lines.append(f"          | {ev}")
+                    lines.append(f"          | {clip(ev, MAX_LINE_CHARS // 2)}")
         return "\n".join(lines)
 
     def render(self, fmt: str) -> str:

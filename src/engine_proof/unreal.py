@@ -9,6 +9,7 @@ from pathlib import Path
 
 from .findings import Finding
 from .project import iter_files, to_rel
+from .redact import redact
 from .snapshot import is_readonly
 
 LOG_PREFIX_RE = re.compile(r"^\[[^\]]*\]\[\s*\d+\]")
@@ -104,8 +105,8 @@ def scan_log_lines(lines: list[str], logname: str, first_line: int = 1,
             last = next((b.message for b in reversed(block) if re.search(r"\w+(Error|Exception)\b", b.message)),
                         block[-1].message)
             _emit(out, counts, suppressed, max_per_id, Finding(
-                "unreal.log.python_error", "error", f"Python error: {last.strip()[:200]}",
-                file=logname, line=pl.number, evidence="\n".join(b.text for b in block[-8:])))
+                "unreal.log.python_error", "error", f"Python error: {redact(last.strip())[:200]}",
+                file=logname, line=pl.number, evidence=redact("\n".join(b.text for b in block[-8:]))))
             i = j
             continue
         for fid, sev, rx in LOG_PATTERNS:
@@ -115,8 +116,8 @@ def scan_log_lines(lines: list[str], logname: str, first_line: int = 1,
                 if fid == "unreal.log.readonly" and pl.category in ("LogInit", "LogConfig"):
                     break  # startup notes about read-only config are not asset failures
                 _emit(out, counts, suppressed, max_per_id, Finding(
-                    fid, sev, pl.message.strip()[:240] or pl.text[:240], file=logname, line=pl.number,
-                    evidence=pl.text[:400]))
+                    fid, sev, redact(pl.message.strip())[:240] or redact(pl.text)[:240], file=logname,
+                    line=pl.number, evidence=redact(pl.text)[:400]))
                 break
         i += 1
     for fid, n in suppressed.items():
@@ -209,7 +210,7 @@ def _localized(culture: str, file: str, evidence: str) -> Finding:
         "unreal.localized_editor", "warning",
         f"editor runs with culture/language '{culture}'. Python scripts that look up nodes, pins, "
         "menus or categories by display name can silently find nothing; use internal names",
-        file=file, evidence=evidence[:300])
+        file=file, evidence=redact(evidence)[:300])
 
 
 def editor_language_findings(root: Path) -> list[Finding]:

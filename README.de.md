@@ -201,6 +201,19 @@ Ein einzelner Lauf: `codex exec "Rename the door Blueprint variable, then prove 
 
 Liegen die Snapshots im Projekt, gehört `.engine-proof/` in die `.gitignore`.
 
+## Sicherheit
+
+engine-proof zitiert Zeilen aus Unreal-Editor-Logs, aus der Godot-Ausgabe und aus Projektdateien als `evidence`. Solche Zeilen können Geheimnisse enthalten: API-Schlüssel in URLs, Tokens in Befehlszeilen, Passwörter in Verbindungszeichenfolgen, Benutzernamen in Pfaden. Im Hook-Modus geht der Bericht direkt an den Agenten. Bevor etwas ausgegeben wird, macht engine-proof deshalb Folgendes:
+
+- Es schwärzt geheimnisartige Werte in jeder Meldung, jeder `evidence` und jedem Dateifeld, in der Text- wie in der JSON-Ausgabe: `Authorization`-Header und `Bearer`-Tokens, Zugangsdaten in URLs (`https://user:...@host`), Werte von Schlüsseln wie `password`, `token`, `secret`, `api_key`, `access_key`, `credential`, `session_id` (als `key=value`, `key: value`, JSON oder Befehlszeilenschalter), die Abfrageparameter `key`, `sig`, `code`, `auth`, verbreitete Tokenformate (`sk-`, `ghp_`, `github_pat_`, `glpat-`, `AKIA`, `AIza`, `xox?-`, `hf_`, `npm_`, Stripe-Schlüssel, JWTs), private PEM-Schlüssel und den Benutzernamen in Pfaden zum Home-Verzeichnis (ersetzt durch `<user>`). Unreal-Logzeilen werden geschwärzt, bevor sie gekürzt werden; eine Kürzung lässt also kein halbes Geheimnis stehen.
+- Es entfernt Blöcke aus `NAME=value`-Zeilen (drei oder mehr, wie sie `env`, `set` oder `export -p` ausgeben) aus der `evidence` und setzt `[N environment variable line(s) removed]` an ihre Stelle. engine-proof selbst gibt nie Umgebungsvariablen aus.
+- Es begrenzt jede Meldung auf 500 Zeichen und jede `evidence` auf 40 Zeilen und 2000 Zeichen.
+- Es begrenzt die Hook-Ausgabe (stderr oder `additionalContext`) auf 8000 Zeichen. Fehler stehen zuerst, eine Kürzung trifft also zuerst die Warnungen. Den vollständigen Bericht liefern `engine-proof verify` und `engine-proof unreal`.
+
+`unreal_probe.py` wendet dieselben Regeln auf die Fehlertexte an, die es im Editor ausgibt.
+
+Die Schwärzung beruht auf Mustern. Sie erkennt verbreitete Formate, nicht jedes Geheimnis: Ein Passwort ohne verräterischen Schlüsselnamen oder ein Token in einem unbekannten Format kommt durch. Das Feld `project` im Bericht enthält weiterhin den übergebenen Pfad. Wenn Logs echte Produktionszugänge enthalten können, sollte engine-proof nicht die einzige Schutzschicht sein.
+
 ## Grenzen
 
 - `unreal_probe.py` lief während der Entwicklung in keinem Unreal-Editor, es stand keiner zur Verfügung. Die reinen Teile (Pfadzuordnung, Statuszuordnung, Bewertung der Probleme, JSON aus Logs herauslösen, Argumente) sind mit Unit-Tests abgedeckt. Die Editor-Aufrufe (`EditorAssetLibrary`, `EditorLoadingAndSavingUtils.get_dirty_content_packages`, `load_blueprint_class`) unterscheiden sich zwischen Engine-Versionen und stehen in `try`-Blöcken. Der Blueprint-`status` ist nicht in jeder Version aus Python lesbar; dann meldet die Probe `UNKNOWN` und stützt sich auf die Prüfung der erzeugten Klasse. Paketpfade ausserhalb von `/Game/` (Plugin-Inhalte) werden keiner Datei zugeordnet.
@@ -211,6 +224,7 @@ Liegen die Snapshots im Projekt, gehört `.engine-proof/` in die `.gitignore`.
 - Der Schreibschutz wird an den Modusbits der Datei erkannt. Scheitert ein Speichern aus einem anderen Grund (Datei von einem anderen Prozess gesperrt, Virenscanner), zeigt sich das nur im Log oder in der Probe.
 - Die Mojibake-Erkennung sucht nach UTF-8, das als cp1252 oder latin-1 gelesen wurde. Andere Verwechslungen der Kodierung erkennt sie nicht.
 - Die Ladeprüfung führt Ladecode in der Engine aus. `@tool`-Skripte und statische Initialisierungen können dabei laufen.
+- Die Schwärzung von Geheimnissen beruht auf Mustern (siehe [Sicherheit](#sicherheit)); Geheimnisse in unbekannten Formaten werden nicht erkannt.
 
 ## Entwicklung
 

@@ -15,6 +15,7 @@ from . import godot as godot_mod
 from . import unreal as unreal_mod
 from .findings import Finding, Verdict
 from .project import detect_engine
+from .redact import cap_output
 from .snapshot import diff, load_snapshot, save_snapshot, take_snapshot
 from .verify import (evaluate, parse_expectation, text_findings_for_changes,
                      unexpected_changes)
@@ -232,6 +233,9 @@ def default_state_path(root: Path) -> Path:
 
 
 FILE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+# Upper bound for what the hook hands to the agent (stderr or additionalContext).
+HOOK_MAX_CHARS = 8000
+_HOOK_HINT = "; run engine-proof verify or unreal for the full report"
 
 
 def _read_payload() -> dict:
@@ -305,11 +309,12 @@ def cmd_hook(a: argparse.Namespace) -> int:
                                                         "verify.unexpected_change")]
     c = v.counts()
     if c["error"]:
-        _print(v.to_text(show_info=False), sys.stderr)
+        _print(cap_output(v.to_text(show_info=False), HOOK_MAX_CHARS, _HOOK_HINT), sys.stderr)
         return 2  # Claude Code shows stderr of exit code 2 to the model
     if c["warning"]:
+        ctx = cap_output(v.to_text(show_info=False), HOOK_MAX_CHARS, _HOOK_HINT)
         _print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
-                                                  "additionalContext": v.to_text(show_info=False)}}))
+                                                  "additionalContext": ctx}}))
     return EXIT_OK
 
 

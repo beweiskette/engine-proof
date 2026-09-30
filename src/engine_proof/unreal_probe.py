@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import sys
 
@@ -35,6 +36,53 @@ _BP_STATUS = ["UNKNOWN", "DIRTY", "ERROR", "UP_TO_DATE", "BEING_CREATED", "UP_TO
 
 
 # ----------------------------------------------------------------------------- pure part
+
+# Copy of engine_proof.redact.RULES: this file runs inside the editor without the
+# package. Error texts from the editor can quote paths and credentials; they are
+# redacted before the probe prints them. tests/test_redaction.py keeps both in sync.
+REDACT_RULES = [
+    # PEM private key blocks.
+    (r"(?s)-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\Z)",
+     r"-----BEGIN \1PRIVATE KEY----- [REDACTED] -----END \1PRIVATE KEY-----"),
+    # Credentials in URLs: scheme://user:password@host
+    (r"(?i)\b([a-z][a-z0-9+.\-]*://)([^/\s:@]+):([^/\s@]+)@", r"\1\2:[REDACTED]@"),
+    # Authorization headers, with or without a scheme word.
+    (r"(?i)\b((?:proxy-)?authorization[\"']?\s*[:=]\s*[\"']?)((?:bearer|basic|token|digest|negotiate)\s+)?"
+     r"[^\s\"',;]+", r"\1\2[REDACTED]"),
+    (r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/\-]{8,}=*", r"\1[REDACTED]"),
+    # Well-known token formats.
+    (r"\bsk-(?:ant-|proj-|live-|test-)?[A-Za-z0-9_\-]{16,}", "[REDACTED]"),
+    (r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})", "[REDACTED]"),
+    (r"\bglpat-[A-Za-z0-9_\-]{20,}", "[REDACTED]"),
+    (r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b", "[REDACTED]"),
+    (r"\bAIza[0-9A-Za-z_\-]{30,}", "[REDACTED]"),
+    (r"\bxox[abposr]-[A-Za-z0-9\-]{10,}", "[REDACTED]"),
+    (r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}", "[REDACTED]"),
+    (r"\bhf_[A-Za-z0-9]{30,}", "[REDACTED]"),
+    (r"\bnpm_[A-Za-z0-9]{36}\b", "[REDACTED]"),
+    (r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}", "[REDACTED]"),
+    # key=value and key: value where the key names a secret (query strings,
+    # command lines, connection strings, JSON, environment variables).
+    (r"(?i)((?<![A-Za-z0-9])[A-Za-z0-9_.\-]*(?:passw(?:or)?d|pwd|passphrase|secret|token|api[_\-]?key|apikey"
+     r"|access[_\-]?key|private[_\-]?key|credentials?|signature|session[_\-]?id|cookie)[\"']?\s*[=:]\s*)"
+     r"(?!\[REDACTED\])(\"[^\"]*\"|'[^']*'|[^\s&;,\"'<>]+)", r"\1[REDACTED]"),
+    (r"(?i)([?&](?:key|sig|code|auth)=)[^&\s#\"'<>]+", r"\1[REDACTED]"),
+    # User names in home directory paths.
+    (r"(?i)\b([a-z]:[\\/]+(?:users|documents and settings)[\\/]+)(?!<user>)([^\\/\s\"'<>|:*?]+)", r"\1<user>"),
+    (r"(?<![\w.])(/(?:home|Users)/)(?!<user>)([^/\s\"'<>:]+)", r"\1<user>"),
+]
+_REDACT = [(re.compile(p), r) for p, r in REDACT_RULES]
+MAX_ERROR_CHARS = 300
+
+
+def redact_text(text):
+    """Replace secret-like values (tokens, passwords, user names in paths) in a string."""
+    if not text:
+        return text
+    for rx, repl in _REDACT:
+        text = rx.sub(repl, text)
+    return text
+
 
 
 def package_name(asset_path):
@@ -129,6 +177,7 @@ def assess(record):
 
 def build_result(records, culture=None, language=None, engine_version=None):
     for r in records:
+        r["errors"] = [redact_text(str(e))[:MAX_ERROR_CHARS] for e in r.get("errors", [])]
         r["problems"] = assess(r)
     n_err = sum(1 for r in records for p in r["problems"] if p["severity"] == "error")
     return {
