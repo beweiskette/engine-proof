@@ -32,7 +32,7 @@ Python 3.10 oder neuer, keine Laufzeitabhängigkeiten.
 
 ```
 python -m venv .venv
-.venv/bin/pip install git+<repository-url>      # oder: pip install -e . in einem Checkout
+.venv/bin/pip install git+https://github.com/beweiskette/engine-proof.git      # oder: pip install -e . in einem Checkout
 ```
 
 Unter Windows liegt das Programm in `.venv\Scripts\engine-proof.exe`.
